@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from google import genai
+from google import genai  # ✅ Library baru: google-genai, bukan google.generativeai
 
 app = FastAPI()
 
@@ -19,21 +19,29 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
 
-# BENAR: baca dari env, jangan hardcode key
-GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
+# ✅ Baca API key dengan BENAR
+GEMINI_API_KEY = os.getenv("AIzaSyDPAlhabT9CO8HU93KXBxAHnz_Z2UMJJQE")
 if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY environment variable not set!")
-genai.configure(api_key=GEMINI_API_KEY)
+    raise RuntimeError(
+        "GEMINI_API_KEY environment variable tidak ditemukan! "
+        "Pastikan sudah diset di dashboard Render."
+    )
 
-MODEL_NAME = 'gemini-1.5-flash'
+# ✅ Inisialisasi client dengan library baru
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+MODEL_NAME = "gemini-2.5-flash"  # Model terbaru yang ringan
 
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
     try:
         with open("fronted.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
-    except:
-        return HTMLResponse(content="<h1>UI file not found</h1>", status_code=500)
+    except Exception:
+        return HTMLResponse(
+            content="<h1>UI file not found</h1>", 
+            status_code=500
+        )
 
 @app.post("/v1/chat")
 async def chat_endpoint(req: ChatRequest):
@@ -41,7 +49,7 @@ async def chat_endpoint(req: ChatRequest):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt kosong")
 
-    # System prompt (sudah kamu edit sesuai kebutuhan)
+    # System prompt
     system_instruction = (
         "Gunakan bahasa Indonesia yang santai namun tetap berbobot. "
         "Jangan mengulang mentah-mentah referensi, tetapi sampaikan konsep dengan gaya sendiri. "
@@ -57,16 +65,24 @@ async def chat_endpoint(req: ChatRequest):
     full_prompt = f"{system_instruction}\n\nPertanyaan Pengguna: {prompt}\n\nJawaban:"
 
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=600,
-            )
+        # ✅ Panggil Gemini dengan library baru
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=full_prompt,
+            config={
+                "temperature": 0.7,
+                "max_output_tokens": 600,
+            }
         )
         ai_answer = response.text.strip()
         return {"response": ai_answer, "references": []}
+
     except Exception as e:
         print(f"Gemini API error: {traceback.format_exc()}")
-        return JSONResponse(status_code=500, content={"detail": "AI error", "error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Maaf, layanan AI sedang tidak bisa memproses permintaan.",
+                "error": str(e)
+            }
+        )

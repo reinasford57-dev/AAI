@@ -75,7 +75,7 @@ async def handle_chat(request: ChatRequest):
         return {
             "status": "fallback",
             "mode": "Offline-Sandbox",
-            "ai_response": "⚠️ Master, GEMINI_API_KEY belum terdeteksi di Environment Render! Cek Langkah 2 lagi gass.",
+            "ai_response": "⚠️ Master, GEMINI_API_KEY belum terdeteksi di Environment Render! Cek Langkah 2 lagi.",
             "rag_context": []
         }
         

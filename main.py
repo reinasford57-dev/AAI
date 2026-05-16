@@ -8,7 +8,6 @@ import google.generativeai as genai
 
 app = FastAPI()
 
-# Aktifkan CORS biar frontend lu gak diblokir saat nembak API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,47 +19,29 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
 
-# Ambil API Key dari Environment Variable Render
-GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M", "")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# BENAR: baca dari env, jangan hardcode key
+GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY environment variable not set!")
+genai.configure(api_key=GEMINI_API_KEY)
 
 MODEL_NAME = 'gemini-1.5-flash'
 
-# =====================================================================
-# 1. ROUTING FRONTEND (Membaca file 'fronted.html' lu yang terpisah)
-# =====================================================================
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
-    # Menyesuaikan nama file di repo lu: 'fronted.html' (tanpa huruf 'n' di tengah)
-    file_path = "fronted.html" 
-    
     try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            return HTMLResponse(content=file.read(), status_code=200)
-    except Exception as e:
-        return HTMLResponse(
-            content=f"<h1>Gagal memuat UI: File '{file_path}' tidak ditemukan di root GitHub!</h1>", 
-            status_code=500
-        )
+        with open("fronted.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except:
+        return HTMLResponse(content="<h1>UI file not found</h1>", status_code=500)
 
-# =====================================================================
-# 2. ENDPOINT API CHAT (Murni Gemini Flash tanpa Modul Tambahan)
-# =====================================================================
 @app.post("/v1/chat")
 async def chat_endpoint(req: ChatRequest):
     prompt = req.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt kosong")
 
-    # Jalur penyelamat kalau lu lupa/belum set API Key di dashboard Render
-    if not GEMINI_API_KEY:
-        return {
-            "response": f"👋 Aman Cok! Backend lu udah nyala terpisah di Render.\nLu input: '{prompt}'\n\nTapi lu belum pasang GEMINI_API_KEY di Environment Variables Render. Pasang dulu gih biar dapet respon asli!",
-            "references": []
-        }
-
-    # Prompt System bawaan untuk asisten riset lu
+    # System prompt (sudah kamu edit sesuai kebutuhan)
     system_instruction = (
         "Gunakan bahasa Indonesia yang santai namun tetap berbobot. "
         "Jangan mengulang mentah-mentah referensi, tetapi sampaikan konsep dengan gaya sendiri. "
@@ -84,19 +65,8 @@ async def chat_endpoint(req: ChatRequest):
                 max_output_tokens=600,
             )
         )
-
         ai_answer = response.text.strip()
-        return {
-            "response": ai_answer,
-            "references": []
-        }
-
+        return {"response": ai_answer, "references": []}
     except Exception as e:
         print(f"Gemini API error: {traceback.format_exc()}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "detail": "Maaf, layanan AI sedang tidak bisa memproses permintaan.",
-                "error": str(e)
-            }
-        )
+        return JSONResponse(status_code=500, content={"detail": "AI error", "error": str(e)})

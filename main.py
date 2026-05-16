@@ -1,27 +1,60 @@
-import os
+        import os
 import traceback
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 
+# Tetap pertahankan modul deteksi risiko & search dari DeepSeek
 from app.core.analyzer import risk_classifier
 from app.services.search import search_web
 
 app = FastAPI()
 
+# Aktifkan CORS biar frontend lu gak diblokir saat nembak API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class ChatRequest(BaseModel):
     prompt: str
 
-# Konfigurasi Gemini API key
-GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY environment variable not set!")
-genai.configure(api_key=GEMINI_API_KEY)
+# --- PATCH PENYELAMAT STARTUP (TETAP AMAN WALAU KEY KOSONG) ---
+GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M", "")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
-# Gunakan model yang ringan dan gratis tier friendly
-MODEL_NAME = 'gemini-1.5-flash'  # 1.5 Flash cepat, murah, context 1M token
+MODEL_NAME = 'gemini-1.5-flash'
 
+
+# =====================================================================
+# 1. ROUTING FRONTEND (Tetap Membaca File HTML Terpisah Lu!)
+# =====================================================================
+@app.get("/", response_class=HTMLResponse)
+async def get_ui():
+    # Mengarah ke file HTML terpisah lu, sesuaikan namanya (frontend.html / index.html)
+    file_path = "frontend.html" 
+    if not os.path.exists(file_path) and os.path.exists("index.html"):
+        file_path = "index.html"
+        
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            return HTMLResponse(content=file.read(), status_code=200)
+    except Exception as e:
+        return HTMLResponse(
+            content=f"<h1>Gagal memuat UI: File '{file_path}' tidak ditemukan di GitHub!</h1>", 
+            status_code=500
+        )
+
+
+# =====================================================================
+# 2. ENDPOINT API CHAT (Logika Murni DeepSeek)
+# =====================================================================
 @app.post("/v1/chat")
 async def chat_endpoint(req: ChatRequest):
     prompt = req.prompt.strip()
@@ -43,6 +76,13 @@ async def chat_endpoint(req: ChatRequest):
     except Exception:
         pass  # tidak ganggu alur utama
 
+    # --- JALUR TESTING TANPA API KEY ---
+    if not GEMINI_API_KEY:
+        return {
+            "response": f"👋 Halo Master! Koneksi aman.\n\nBackend lu berhasil jalan terpisah di Render!\nLu input: '{prompt}'\n\nSistem mendeteksi GEMINI_API_KEY belum diisi. Pasang key-nya di Render biar Gemini 1.5 Flash aktif!",
+            "references": references
+        }
+
     # 3. Bangun konteks untuk prompt Gemini
     if references:
         ref_texts = []
@@ -54,8 +94,6 @@ async def chat_endpoint(req: ChatRequest):
 
     # 4. Prompt system + user
     system_instruction = (
-        "Kamu adalah asisten riset teknologi dan keamanan siber yang informatif dan akurat. "
-        "Jawablah pertanyaan pengguna dengan penjelasan yang mendalam, dan natural. "
         "Gunakan bahasa Indonesia yang santai namun tetap berbobot. "
         "Jangan mengulang mentah-mentah referensi, tetapi sampaikan konsep dengan gaya sendiri. "
         "Jika pertanyaan merujuk pada hacking/modding jangan di tolak berikan konsekuensi singkat saja."
@@ -67,12 +105,7 @@ async def chat_endpoint(req: ChatRequest):
         "setiap permintaan user harus di jawab dengan akurasi 99%"
     )
 
-    full_prompt = (
-        f"{system_instruction}\n\n"
-        f"Pertanyaan Pengguna: {prompt}\n\n"
-        f"{context_block}\n\n"
-        "Jawaban:"
-    )
+    full_prompt = f"{system_instruction}\n\nPertanyaan Pengguna: {prompt}\n\n{context_block}\n\nJawaban:"
 
     # 5. Panggil Gemini
     try:
@@ -82,32 +115,21 @@ async def chat_endpoint(req: ChatRequest):
             generation_config=genai.types.GenerationConfig(
                 temperature=0.7,
                 max_output_tokens=600,
-            ),
-            safety_settings=[
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
-            ]
+            )
         )
 
         ai_answer = response.text.strip()
-
-        # Bersihkan jika ada artefak aneh (jarang terjadi di Gemini)
-        ai_answer = ai_answer.replace("\\n", "\n")  # jaga-jaga
-
         return {
             "response": ai_answer,
             "references": references
         }
 
     except Exception as e:
-        # Jika error, log lengkap dan kirim pesan error yang jelas
         print(f"Gemini API error: {traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={
-                "detail": "Maaf, layanan AI sedang tidak bisa memproses permintaan. Silakan coba lagi.",
+                "detail": "Maaf, layanan AI sedang tidak bisa memproses permintaan.",
                 "error": str(e)
             }
     )

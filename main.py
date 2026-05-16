@@ -22,7 +22,7 @@ app.add_middleware(
 
 # --- SINKRONISASI INITIALIZE GEMINI ---
 # Sistem bakal otomatis ngebaca key yang lu input di dashboard Render tadi
-api_key = os.environ.get("AIzaSyDpqMiX_IYiwp80sKa7U3LhKbJOiCIc7Ds")
+api_key = os.environ.get("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
 client = genai.Client(api_key=api_key) if api_key else None
 
 # --- PYDANTIC SCHEMAS (KONTRAK DATA AMAN) ---

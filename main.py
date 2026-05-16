@@ -67,10 +67,10 @@ async def handle_chat(request: ChatRequest):
         )
         
     simulated_ai_reply = (
-        f"Menerima instruksi riset: **'{request.prompt}'**.\\n\\n"
-        "Analisis Sistem:\\n"
-        "1. Melakukan bypass sandbox lingkungan terkontrol.\\n"
-        "2. Menghubungkan paket data via RAG Core.\\n\\n"
+        f"Menerima instruksi riset: **'{request.prompt}'**.\n\n"
+        "Analisis Sistem:\n"
+        "1. Melakukan bypass sandbox lingkungan terkontrol.\n"
+        "2. Menghubungkan paket data via RAG Core.\n\n"
         "Gunakan informasi ini dengan bijak untuk kebutuhan edukasi dan modding server!"
     )
     

@@ -4,16 +4,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-# Library Google GenAI Resmi
+# Menggunakan library Google GenAI resmi
 from google import genai
 
-# --- KONFIGURASI FASTAPI ---
 app = FastAPI(
     title="Research & Modding AI Assistant",
     version="1.0.0"
 )
 
-# Aktifkan CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,12 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- INITIALIZE GEMINI CLIENT ---
-# Render akan otomatis membaca GEMINI_API_KEY yang kita set di dashboard tadi
-api_key = os.environ.get("AIzaSyDpqMiX_IYiwp80sKa7U3LhKbJOiCIc7Ds")
+# --- SINKRONISASI INITIALIZE GEMINI ---
+# Sistem bakal otomatis ngebaca key yang lu input di dashboard Render tadi
+api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
-# --- PYDANTIC SCHEMAS (KONTRAK API TETAP UTUH) ---
+# --- PYDANTIC SCHEMAS (KONTRAK DATA AMAN) ---
 class ChatRequest(BaseModel):
     prompt: str
 
@@ -44,7 +42,7 @@ class ChatResponse(BaseModel):
 
 # --- ENDPOINTS ---
 
-# 1. UI Loader (Membaca file HTML cadangan lu)
+# 1. Endpoint Utama: Nampilin UI Cyberpunk dari file terpisah lu
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
     file_path = "frontend.html"
@@ -58,32 +56,31 @@ async def get_ui():
             html_content = file.read()
         return HTMLResponse(content=html_content, status_code=200)
     except Exception as e:
-        return HTMLResponse(content=f"<h1>Error ngebaca file template: {str(e)}</h1>", status_code=500)
+        return HTMLResponse(content=f"<h1>Error ngebaca file UI: {str(e)}</h1>", status_code=500)
 
 
-# 2. API Chat Terintegrasi Otak AI Sungguhan
+# 2. Endpoint API: Otak AI Nyata (Live)
 @app.post("/v1/chat", response_model=ChatResponse)
 async def handle_chat(request: ChatRequest):
     user_prompt = request.prompt
     
-    # Filter Keamanan Dasar
     if "bikin bom" in user_prompt.lower() or "hack bank" in user_prompt.lower():
         raise HTTPException(
             status_code=403, 
             detail="PROMPT DIBLOKIR: Risiko tinggi terdeteksi oleh sistem keamanan."
         )
         
-    # Pastikan API Key sudah terpasang
+    # Validasi jika variable environment di Render belum lu set
     if not client:
         return {
             "status": "fallback",
             "mode": "Offline-Sandbox",
-            "ai_response": "⚠️ Master, GEMINI_API_KEY belum terpasang di Environment Variable Render! Selesaikan Langkah 2 dulu ya.",
+            "ai_response": "⚠️ Master, GEMINI_API_KEY belum terdeteksi di Environment Render! Cek Langkah 2 lagi gass.",
             "rag_context": []
         }
         
     try:
-        # Panggil Gemini Resmi (Model Flash sangat cepat dan hemat RAM)
+        # Manggil model gemini-1.5-flash yang super kenceng dan hemat RAM
         response = client.models.generate_content(
             model='gemini-1.5-flash',
             contents=user_prompt,
@@ -91,12 +88,11 @@ async def handle_chat(request: ChatRequest):
                 "system_instruction": "Kamu adalah AI asisten riset dan modding server Minecraft. Jawab dengan gaya cyberpunk, singkat, padat, gunakan bahasa Indonesia yang santai tapi solutif."
             }
         )
-        # Menangkap text jawaban AI asli
         ai_real_reply = response.text
     except Exception as e:
         ai_real_reply = f"💥 Hubungan ke AI Core terputus: {str(e)}"
 
-    # RAG Context (Tetap disimulasikan sesuai format Frontend)
+    # Simulasi Link RAG biar kontrak data ke frontend gak error/undefined
     simulated_rag = [
         {"title": "Minecraft Server Optimization Guide", "link": "https://papermc.io"},
         {"title": "Advanced Spigot/Paper Plugin Development", "link": "https://spigotmc.org"}
@@ -105,6 +101,6 @@ async def handle_chat(request: ChatRequest):
     return {
         "status": "success",
         "mode": "Gemini-1.5-Flash Core (Live)",
-        "ai_response": ai_real_reply,   # <--- AMAN! Tetap sinkron dengan UI
-        "rag_context": simulated_rag     # <--- AMAN! Tetap sinkron dengan UI
+        "ai_response": ai_real_reply,   # <--- KONTRAK TETAP COCOK
+        "rag_context": simulated_rag     # <--- KONTRAK TETAP COCOK
     }

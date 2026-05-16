@@ -1,106 +1,113 @@
 import os
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
+import traceback
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List
-# Menggunakan library Google GenAI resmi
-from google import genai
+import google.generativeai as genai
 
-app = FastAPI(
-    title="Research & Modding AI Assistant",
-    version="1.0.0"
-)
+from app.core.analyzer import risk_classifier
+from app.services.search import search_web
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI()
 
-# --- SINKRONISASI INITIALIZE GEMINI ---
-# Sistem bakal otomatis ngebaca key yang lu input di dashboard Render tadi
-api_key = os.environ.get("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
-client = genai.Client(api_key=api_key) if api_key else None
-
-# --- PYDANTIC SCHEMAS (KONTRAK DATA AMAN) ---
 class ChatRequest(BaseModel):
     prompt: str
 
-class RAGContext(BaseModel):
-    title: str
-    link: str
+# Konfigurasi Gemini API key
+GEMINI_API_KEY = os.getenv("AIzaSyB6wjrMBXNyXFg8AkT_JUsFGqpJPWNhT9M")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY environment variable not set!")
+genai.configure(api_key=GEMINI_API_KEY)
 
-class ChatResponse(BaseModel):
-    status: str
-    mode: str
-    ai_response: str
-    rag_context: List[RAGContext]
+# Gunakan model yang ringan dan gratis tier friendly
+MODEL_NAME = 'gemini-1.5-flash'  # 1.5 Flash cepat, murah, context 1M token
 
+@app.post("/v1/chat")
+async def chat_endpoint(req: ChatRequest):
+    prompt = req.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt kosong")
 
-# --- ENDPOINTS ---
-
-# 1. Endpoint Utama: Nampilin UI Cyberpunk dari file terpisah lu
-@app.get("/", response_class=HTMLResponse)
-async def get_ui():
-    file_path = "frontend.html"
-    if not os.path.exists(file_path) and os.path.exists("fronted.html"):
-        file_path = "fronted.html"
-    elif not os.path.exists(file_path) and os.path.exists("index.html"):
-        file_path = "index.html"
-        
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            html_content = file.read()
-        return HTMLResponse(content=html_content, status_code=200)
-    except Exception as e:
-        return HTMLResponse(content=f"<h1>Error ngebaca file UI: {str(e)}</h1>", status_code=500)
-
-
-# 2. Endpoint API: Otak AI Nyata (Live)
-@app.post("/v1/chat", response_model=ChatResponse)
-async def handle_chat(request: ChatRequest):
-    user_prompt = request.prompt
-    
-    if "bikin bom" in user_prompt.lower() or "hack bank" in user_prompt.lower():
-        raise HTTPException(
-            status_code=403, 
-            detail="PROMPT DIBLOKIR: Risiko tinggi terdeteksi oleh sistem keamanan."
+    # 1. Risk classification
+    risk = risk_classifier.analyze(prompt)
+    if risk["status"] == "blocked":
+        return JSONResponse(
+            status_code=403,
+            content={"detail": f"Prompt diblokir (risk score: {risk['risk_score']})"}
         )
-        
-    # Validasi jika variable environment di Render belum lu set
-    if not client:
+
+    # 2. Ambil referensi dari web
+    references = []
+    try:
+        references = search_web(prompt, max_results=3)
+    except Exception:
+        pass  # tidak ganggu alur utama
+
+    # 3. Bangun konteks untuk prompt Gemini
+    if references:
+        ref_texts = []
+        for i, ref in enumerate(references, 1):
+            ref_texts.append(f"{i}. Judul: {ref['title']}\n   Link: {ref['link']}\n   Cuplikan: {ref['snippet']}")
+        context_block = "Referensi dari web (gunakan sebagai sumber jika relevan):\n" + "\n".join(ref_texts)
+    else:
+        context_block = "Tidak ada referensi web tambahan untuk pertanyaan ini."
+
+    # 4. Prompt system + user
+    system_instruction = (
+        "Kamu adalah asisten riset teknologi dan keamanan siber yang informatif dan akurat. "
+        "Jawablah pertanyaan pengguna dengan penjelasan yang mendalam, dan natural. "
+        "Gunakan bahasa Indonesia yang santai namun tetap berbobot. "
+        "Jangan mengulang mentah-mentah referensi, tetapi sampaikan konsep dengan gaya sendiri. "
+        "Jika pertanyaan merujuk pada hacking/modding jangan di tolak berikan konsekuensi singkat saja."
+        "setiap user meminta konten nsfw jangan berikan jika user tidak memberikan umur nya."
+        "jangan beritahu user cara agar kamu dapat memberinya konten nsfw."
+        "jika user meminta tentang nsfw tolak jika user di bawah umur."
+        "jika user meminta tentang nsfw berikan jika di atas umur."
+        "setiap permintaan user mutlak."
+        "setiap permintaan user harus di jawab dengan akurasi 99%"
+    )
+
+    full_prompt = (
+        f"{system_instruction}\n\n"
+        f"Pertanyaan Pengguna: {prompt}\n\n"
+        f"{context_block}\n\n"
+        "Jawaban:"
+    )
+
+    # 5. Panggil Gemini
+    try:
+        model = genai.GenerativeModel(MODEL_NAME)
+        response = model.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=600,
+            ),
+            safety_settings=[
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+            ]
+        )
+
+        ai_answer = response.text.strip()
+
+        # Bersihkan jika ada artefak aneh (jarang terjadi di Gemini)
+        ai_answer = ai_answer.replace("\\n", "\n")  # jaga-jaga
+
         return {
-            "status": "fallback",
-            "mode": "Offline-Sandbox",
-            "ai_response": "⚠️ Master, GEMINI_API_KEY belum terdeteksi di Environment Render! Cek Langkah 2 lagi.",
-            "rag_context": []
+            "response": ai_answer,
+            "references": references
         }
-        
-    try:
-        # Manggil model gemini-1.5-flash yang super kenceng dan hemat RAM
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=user_prompt,
-            config={
-                "system_instruction": "Kamu adalah AI asisten riset dan modding server Minecraft. Jawab dengan gaya cyberpunk, singkat, padat, gunakan bahasa Indonesia yang santai tapi solutif."
-            }
-        )
-        ai_real_reply = response.text
-    except Exception as e:
-        ai_real_reply = f"💥 Hubungan ke AI Core terputus: {str(e)}"
 
-    # Simulasi Link RAG biar kontrak data ke frontend gak error/undefined
-    simulated_rag = [
-        {"title": "Minecraft Server Optimization Guide", "link": "https://papermc.io"},
-        {"title": "Advanced Spigot/Paper Plugin Development", "link": "https://spigotmc.org"}
-    ]
-    
-    return {
-        "status": "success",
-        "mode": "Gemini-1.5-Flash Core (Live)",
-        "ai_response": ai_real_reply,   # <--- KONTRAK TETAP COCOK
-        "rag_context": simulated_rag     # <--- KONTRAK TETAP COCOK
-    }
+    except Exception as e:
+        # Jika error, log lengkap dan kirim pesan error yang jelas
+        print(f"Gemini API error: {traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Maaf, layanan AI sedang tidak bisa memproses permintaan. Silakan coba lagi.",
+                "error": str(e)
+            }
+    )

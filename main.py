@@ -1,4 +1,4 @@
-        import os
+import os
 import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -38,7 +38,7 @@ MODEL_NAME = 'gemini-1.5-flash'
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
     # Mengarah ke file HTML terpisah lu, sesuaikan namanya (frontend.html / index.html)
-    file_path = "frontend.html" 
+    file_path = "fronted.html" 
     if not os.path.exists(file_path) and os.path.exists("index.html"):
         file_path = "index.html"
         

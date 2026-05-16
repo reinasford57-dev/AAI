@@ -31,7 +31,7 @@ client = OpenAI(
 )
 
 # Model yang kita pakai (gratis & stabil)
-MODEL_NAME = "google/gemini-2.0-flash-exp:free"
+MODEL_NAME = "deepseek/deepseek-r1-0528"
 
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():

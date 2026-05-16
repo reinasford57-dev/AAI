@@ -20,7 +20,7 @@ class ChatRequest(BaseModel):
     prompt: str
 
 # ✅ Baca API key dengan BENAR
-GEMINI_API_KEY = os.getenv("AIzaSyDPAlhabT9CO8HU93KXBxAHnz_Z2UMJJQE")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError(
         "GEMINI_API_KEY environment variable tidak ditemukan! "

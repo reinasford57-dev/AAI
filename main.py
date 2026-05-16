@@ -41,7 +41,7 @@ class ChatResponse(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
     # Nyari file frontend.html yang lu taro di GitHub tadi
-    file_path = "frontend.html"
+    file_path = "fronted.html"
     
     # Kalau lu namain filenya index.html, ganti baris di bawah jadi: file_path = "index.html"
     if not os.path.exists(file_path) and os.path.exists("index.html"):

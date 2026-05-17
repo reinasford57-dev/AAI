@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI  # Gak perlu library google-generativeai lagi!
+from openai import OpenAI
 
 app = FastAPI()
 
@@ -19,18 +19,18 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
 
-# ✅ Baca API key dari env
+# API Key OpenRouter
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     raise RuntimeError("OPENROUTER_API_KEY environment variable tidak ditemukan!")
 
-# ✅ Inisialisasi client OpenRouter (pakai base_url khusus)
+# Inisialisasi client
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
 )
 
-# Model yang kita pakai (gratis & stabil)
+# Model yang dipakai (routing otomatis ke model gratis)
 MODEL_NAME = "openrouter/free"
 
 @app.get("/", response_class=HTMLResponse)
@@ -60,8 +60,11 @@ async def chat_endpoint(req: ChatRequest):
     )
 
     try:
-        # ✅ Panggil OpenRouter dengan OpenAI SDK
         completion = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://aai-p4d0.onrender.com",  # URL aplikasi kamu
+                "X-Title": "Research & Modding AI Assistant",
+            },
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": system_instruction},
@@ -70,7 +73,17 @@ async def chat_endpoint(req: ChatRequest):
             temperature=0.7,
             max_tokens=600,
         )
-        ai_answer = completion.choices[0].message.content.strip()
+
+        # Cek respons dengan aman
+        if completion.choices and len(completion.choices) > 0:
+            ai_answer = completion.choices[0].message.content
+            if ai_answer:
+                ai_answer = ai_answer.strip()
+            else:
+                ai_answer = "(Model mengembalikan konten kosong - mungkin terblokir safety filter)"
+        else:
+            ai_answer = "(Tidak ada respons dari model)"
+
         return {"response": ai_answer, "references": []}
 
     except Exception as e:

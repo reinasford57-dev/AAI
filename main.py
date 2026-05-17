@@ -31,7 +31,8 @@ client = OpenAI(
 )
 
 # Model yang dipakai (routing otomatis ke model gratis)
-MODEL_NAME = "openrouter/free"
+MODEL_NAME = "google/gemma-7b-it:free"
+
 
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():

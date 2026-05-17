@@ -31,7 +31,7 @@ client = OpenAI(
 )
 
 # Model yang kita pakai (gratis & stabil)
-MODEL_NAME = "deepseek/deepseek-r1-0528:free"
+MODEL_NAME = "deepseek/deepseek-chat-v3-0324:free"
 
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
